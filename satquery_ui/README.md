@@ -1,32 +1,63 @@
-# React + TypeScript + Vite
+# Extracted Framer Hero Section & AI Chat Components
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+This directory contains the full React + TypeScript source code extracted directly from your **SatQuery AI** Framer project.
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 📁 Extracted Files
 
-## React Compiler
+1. **`HeroSection.tsx`**  
+   The complete Hero Section component matching your Framer design system:
+   - Font loading for `Bricolage Grotesque` & `Inter Display`
+   - Background cloud WebP layer overlays
+   - Title, rotated satellite icon (-16°), and sub-headline typography
+   - Embedded responsive `AiChatPrompt` container
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+2. **`AiChatPrompt.tsx`** (originally `Codigo.tsx`)  
+   The full interactive ChatGPT-style prompt box component:
+   - 40.7 KB of TypeScript / Framer Motion code
+   - Microphone, attachment, and send button SVG icons
+   - Animated typing effects, focus glows, and dark/light theme properties
 
-## Expanding the Oxlint configuration
+3. **`index.ts`**  
+   Clean TypeScript exports for simple importing.
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
+---
 
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
+## 🚀 How to Use in Your Local React / Next.js Project
+
+### 1. Import Component
+```tsx
+import { HeroSection } from "./framer_export"
+
+export default function App() {
+  return (
+    <main>
+      <HeroSection 
+        title="SatQuery AI"
+        subtitle="Agentic remote sensing assistant that lets users analyze satellite imagery through simple natural language queries."
+      />
+    </main>
+  )
 }
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+### 2. Connect to SatQuery AI Backend (`http://localhost:8000`)
+```tsx
+async function handleQuery(queryText: string, imageId: string, taskType: string) {
+  const response = await fetch("http://localhost:8000/v1/ml/process", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      request_id: crypto.randomUUID(),
+      task_type: taskType, // "vqa", "caption", "fusion", or "change"
+      query: queryText,
+      image_ids: [imageId],
+      input_scope: "single"
+    })
+  });
+  
+  const data = await response.json();
+  console.log("Model Response:", data.facts, data.confidence);
+}
+```

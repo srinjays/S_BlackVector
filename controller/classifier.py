@@ -15,12 +15,16 @@ class QueryClassifier:
     """
 
     RULES = [
+        (TaskType.SPECTRAL_ANALYSIS, ["ndvi", "ndwi", "ndbi", "ndmi", "nbr", "dnbr", "spectral", "vegetation stress", "water extent", "burn severity", "canopy", "fapar", "fvc", "lai", "surface moisture proxy"]),
+        (TaskType.AGRICULTURE_PREDICTION, ["soil moisture", "soil type", "crop suitability", "crop yield", "irrigation requirement", "irrigation", "crop recommendation", "drought risk", "drought", "agricultural productivity", "soil nutrient", "crop classification", "yield estimate"]),
+        (TaskType.EARTH_FACTS, ["earth facts", "ground resolution", "sentinel-2 bands", "spatial resolution", "revisit time"]),
         (TaskType.CHANGE, ["change", "changed", "difference", "differences", "between", "before and after", "temporal", "development over time"]),
         (TaskType.FUSION, ["sar", "optical", "combine", "fusion", "complementary", "both modalities", "cross-modal"]),
         (TaskType.GROUNDING, ["where", "locate", "location", "find", "detect all", "bounding box", "bounding boxes", "mark", "highlight", "near the"]),
         (TaskType.CAPTION, ["caption", "summarize the image", "give me a caption"]),
         (TaskType.VQA, ["is there", "are there", "how many", "what type", "what kind", "does the image", "which", "what is", "what are", "can you identify"]),
     ]
+
 
     def classify(self, query: str, input_scope: InputScope, hint: Optional[TaskType] = None) -> TaskType:
         if hint is not None:

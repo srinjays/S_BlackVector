@@ -1,9 +1,11 @@
-import { useEffect, useRef, useCallback, useTransition } from "react";
+import { useEffect, useRef, useCallback } from "react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { SendIcon, Paperclip, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import * as React from "react";
+import { useVoiceInput } from "@/hooks/useVoiceInput";
+import { VoiceInputButton } from "./VoiceInputButton";
 
 /* ─────────────────────────────────────────────
    Auto-resize textarea hook
@@ -67,9 +69,11 @@ export function AnimatedAIChat({
   const [files, setFiles] = useState<File[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-  const [, startTransition] = useTransition();
   const { textareaRef, adjustHeight } = useAutoResizeTextarea({ minHeight: 96, maxHeight: 240 });
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const lastConsumedTranscriptRef = useRef("");
+
+  /* ── Voice input hook ── */
+  const voice = useVoiceInput();
 
   const canSend = (value.trim().length > 0 || files.length > 0) && !isLoading;
 
@@ -83,23 +87,64 @@ export function AnimatedAIChat({
 
   const handleSend = () => {
     if (!canSend) return;
-    startTransition(() => {
-      setIsLoading(true);
-      onSubmit?.(value.trim(), files);
-      setTimeout(() => {
-        setIsLoading(false);
-        setValue("");
-        setFiles([]);
-        adjustHeight(true);
-      }, 400);
-    });
+    voice.stopListening();
+    const currentValue = value.trim();
+    const currentFiles = [...files];
+    // Clear state immediately for instant UI response
+    setValue("");
+    setFiles([]);
+    adjustHeight(true);
+    lastConsumedTranscriptRef.current = "";
+    voice.reset();
+    // Fire the submit callback
+    onSubmit?.(currentValue, currentFiles);
   };
+
+  /* ── Sync voice transcript into textarea ── */
+  useEffect(() => {
+    if (voice.transcript && voice.transcript !== lastConsumedTranscriptRef.current) {
+      console.log('[AnimatedAIChat] Consuming transcript:', voice.transcript);
+      lastConsumedTranscriptRef.current = voice.transcript;
+      setValue(prev => {
+        const separator = prev && !prev.endsWith(' ') ? ' ' : '';
+        return prev + separator + voice.transcript;
+      });
+      // Clear consumed transcript without stopping the listening session.
+      // voice.reset() would kill the session — we only want to clear the
+      // accumulated text so it doesn't get re-appended.
+      voice.clearTranscript();
+      adjustHeight();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [voice.transcript]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       setFiles(prev => [...prev, ...Array.from(e.target.files!)]);
     }
     e.target.value = "";
+  };
+
+  /* Programmatic file picker — creates a fresh <input> each click to avoid
+     Chromium bug where zero-dimension hidden inputs silently refuse .click() */
+  const openFilePicker = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.multiple = true;
+    input.accept = 'image/*,.tif,.tiff,.png,.jpg,.jpeg,.webp,.npz,.nc,.geojson';
+    input.style.display = 'none';
+    document.body.appendChild(input);
+    input.addEventListener('change', (ev) => {
+      const target = ev.target as HTMLInputElement;
+      if (target.files && target.files.length > 0) {
+        setFiles(prev => [...prev, ...Array.from(target.files!)]);
+      }
+      document.body.removeChild(input);
+    });
+    input.addEventListener('cancel', () => {
+      document.body.removeChild(input);
+    });
+    input.click();
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -135,15 +180,7 @@ export function AnimatedAIChat({
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      {/* Hidden file input */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        multiple
-        accept="image/*,.tif,.tiff,.png,.jpg,.jpeg,.webp,.npz,.nc,.geojson"
-        className="hidden"
-        onChange={handleFileChange}
-      />
+
 
       {/* ── Glass card — matches navbar: bg #1f1f1f57, border #333 ── */}
       <div
@@ -224,7 +261,7 @@ export function AnimatedAIChat({
           {/* Left — Upload / pin button */}
           <motion.button
             type="button"
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => openFilePicker()}
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             title="Attach satellite imagery or data files"
@@ -242,50 +279,80 @@ export function AnimatedAIChat({
             <span>Attach files</span>
           </motion.button>
 
-          {/* Right — Send button */}
-          <motion.button
-            type="button"
-            onClick={handleSend}
-            disabled={!canSend}
-            whileHover={canSend ? { scale: 1.03 } : {}}
-            whileTap={canSend ? { scale: 0.97 } : {}}
-            className="flex items-center gap-2.5 rounded-xl font-medium transition-all duration-200"
-            style={{
-              padding: "10px 20px",
-              fontSize: 14,
-              fontFamily: "Inter, system-ui, sans-serif",
-              cursor: canSend ? "pointer" : "not-allowed",
-              background: canSend ? "#ffffff" : "rgba(255,255,255,0.07)",
-              color: canSend ? "#0a0f0b" : "rgba(255,255,255,0.25)",
-              boxShadow: canSend ? "0 4px 24px rgba(255,255,255,0.12)" : "none",
-            }}
-          >
-            <AnimatePresence mode="wait">
-              {isLoading ? (
-                <motion.span
-                  key="loading"
-                  className="flex items-center gap-2"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
+          {/* Right — Voice + Send grouped together */}
+          <div className="flex items-center gap-2.5">
+            {/* Voice input + interim transcript */}
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <VoiceInputButton
+                isSupported={voice.isSupported}
+                isListening={voice.isListening}
+                error={voice.error}
+                onToggle={voice.toggleListening}
+              />
+              {voice.isListening && voice.interimTranscript && (
+                <span
+                  style={{
+                    marginLeft: 8,
+                    fontSize: 12,
+                    color: 'rgba(255,255,255,0.35)',
+                    fontStyle: 'italic',
+                    fontFamily: 'Inter, system-ui, sans-serif',
+                    maxWidth: 160,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
                 >
-                  <TypingDots />
-                  <span>Analyzing</span>
-                </motion.span>
-              ) : (
-                <motion.span
-                  key="send"
-                  className="flex items-center gap-2"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                >
-                  <SendIcon className="w-4 h-4" />
-                  <span>Send</span>
-                </motion.span>
+                  {voice.interimTranscript}
+                </span>
               )}
-            </AnimatePresence>
-          </motion.button>
+            </div>
+
+            {/* Send button */}
+            <motion.button
+              type="button"
+              onClick={handleSend}
+              disabled={!canSend}
+              whileHover={canSend ? { scale: 1.03 } : {}}
+              whileTap={canSend ? { scale: 0.97 } : {}}
+              className="flex items-center gap-2.5 rounded-xl font-medium transition-all duration-200"
+              style={{
+                padding: "10px 20px",
+                fontSize: 14,
+                fontFamily: "Inter, system-ui, sans-serif",
+                cursor: canSend ? "pointer" : "not-allowed",
+                background: canSend ? "#ffffff" : "rgba(255,255,255,0.07)",
+                color: canSend ? "#0a0f0b" : "rgba(255,255,255,0.25)",
+                boxShadow: canSend ? "0 4px 24px rgba(255,255,255,0.12)" : "none",
+              }}
+            >
+              <AnimatePresence mode="wait">
+                {isLoading ? (
+                  <motion.span
+                    key="loading"
+                    className="flex items-center gap-2"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                  >
+                    <TypingDots />
+                    <span>Analyzing</span>
+                  </motion.span>
+                ) : (
+                  <motion.span
+                    key="send"
+                    className="flex items-center gap-2"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                  >
+                    <SendIcon className="w-4 h-4" />
+                    <span>Send</span>
+                  </motion.span>
+                )}
+              </AnimatePresence>
+            </motion.button>
+          </div>
         </div>
       </div>
 

@@ -2,8 +2,10 @@
 
 import * as React from "react"
 import { useState, useEffect, useRef } from "react"
-import { Mic, Paperclip, Send } from "lucide-react"
+import { Paperclip, Send } from "lucide-react"
 import { AnimatePresence, motion } from "framer-motion"
+import { useVoiceInput } from "@/hooks/useVoiceInput"
+import { VoiceInputButton } from "./VoiceInputButton"
 
 const PLACEHOLDERS = [
   "Ask about satellite imagery...",
@@ -26,7 +28,10 @@ const AIChatInput = ({ onSubmit }: AIChatInputProps) => {
   const [inputValue, setInputValue] = useState("")
   const [files, setFiles] = useState<File[]>([])
   const wrapperRef = useRef<HTMLDivElement>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const lastConsumedTranscriptRef = useRef("")
+
+  /* ── Voice input hook ── */
+  const voice = useVoiceInput()
 
   /* Cycle placeholder text when input is inactive */
   useEffect(() => {
@@ -58,10 +63,13 @@ const AIChatInput = ({ onSubmit }: AIChatInputProps) => {
 
   const handleSend = () => {
     if (!inputValue.trim() && files.length === 0) return
+    voice.stopListening()
     onSubmit?.(inputValue.trim(), files, null)
     setInputValue("")
     setFiles([])
     setIsActive(false)
+    lastConsumedTranscriptRef.current = ""
+    voice.reset()
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -78,14 +86,34 @@ const AIChatInput = ({ onSubmit }: AIChatInputProps) => {
     e.target.value = ""
   }
 
+  /* Programmatic file picker — creates a fresh <input> each click to avoid
+     Chromium bug where zero-dimension hidden inputs silently refuse .click() */
+  const openFilePicker = () => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.multiple = true
+    input.accept = 'image/*,.tif,.tiff,.png,.jpg,.jpeg,.webp,.npz,.nc,.geojson'
+    input.style.display = 'none'
+    document.body.appendChild(input)
+    input.addEventListener('change', (ev) => {
+      const target = ev.target as HTMLInputElement
+      if (target.files && target.files.length > 0) {
+        setFiles(prev => [...prev, ...Array.from(target.files!)])
+      }
+      document.body.removeChild(input)
+    })
+    input.addEventListener('cancel', () => {
+      document.body.removeChild(input)
+    })
+    input.click()
+  }
+
   const containerVariants = {
     collapsed: {
-      height: 80,
       boxShadow: "0 2px 16px 0 rgba(0,0,0,0.35)",
       transition: { type: "spring" as const, stiffness: 120, damping: 18 },
     },
     expanded: {
-      height: 80,
       boxShadow: "0 2px 16px 0 rgba(0,0,0,0.35)",
       transition: { type: "spring" as const, stiffness: 120, damping: 18 },
     },
@@ -123,17 +151,27 @@ const AIChatInput = ({ onSubmit }: AIChatInputProps) => {
 
   const canSend = inputValue.trim().length > 0 || files.length > 0
 
+  /* ── Sync voice transcript into input ── */
+  useEffect(() => {
+    if (voice.transcript && voice.transcript !== lastConsumedTranscriptRef.current) {
+      console.log('[AIChatInput] Consuming transcript:', voice.transcript)
+      lastConsumedTranscriptRef.current = voice.transcript
+      setInputValue(prev => {
+        const separator = prev && !prev.endsWith(' ') ? ' ' : ''
+        return prev + separator + voice.transcript
+      })
+      // Clear consumed transcript without stopping the listening session.
+      // voice.reset() would kill the session — we only want to clear the
+      // accumulated text so it doesn't get re-appended.
+      voice.clearTranscript()
+      setIsActive(true)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [voice.transcript])
+
   return (
     <div className="w-full">
-      {/* Hidden file input */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        multiple
-        accept="image/*,.tif,.tiff,.png,.jpg,.jpeg,.webp,.npz,.nc,.geojson"
-        className="hidden"
-        onChange={handleFileChange}
-      />
+
 
       <motion.div
         ref={wrapperRef}
@@ -142,7 +180,6 @@ const AIChatInput = ({ onSubmit }: AIChatInputProps) => {
         animate={isActive || inputValue ? "expanded" : "collapsed"}
         initial="collapsed"
         style={{
-          overflow: "hidden",
           borderRadius: 24,
           background: "rgba(20, 20, 20, 0.92)",
           border: "1px solid rgba(255,255,255,0.10)",
@@ -150,6 +187,7 @@ const AIChatInput = ({ onSubmit }: AIChatInputProps) => {
           WebkitBackdropFilter: "blur(24px)",
           /* inner padding keeps buttons away from the border */
           padding: 6,
+          minHeight: 68,
         }}
         onClick={handleActivate}
       >
@@ -165,7 +203,7 @@ const AIChatInput = ({ onSubmit }: AIChatInputProps) => {
               title="Attach satellite imagery or data files"
               type="button"
               tabIndex={-1}
-              onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click() }}
+              onClick={(e) => { e.stopPropagation(); openFilePicker() }}
             >
               <Paperclip size={22} style={{ color: "rgba(255,255,255,0.60)" }} />
             </button>
@@ -223,16 +261,35 @@ const AIChatInput = ({ onSubmit }: AIChatInputProps) => {
               </div>
             </div>
 
-            {/* Voice */}
-            <button
-              className="flex items-center justify-center rounded-full hover:bg-white/[0.09] transition-colors flex-shrink-0"
-              style={{ width: 44, height: 44, minWidth: 44 }}
-              title="Voice input"
-              type="button"
-              tabIndex={-1}
-            >
-              <Mic size={22} style={{ color: "rgba(255,255,255,0.60)" }} />
-            </button>
+            {/* Voice input */}
+            <VoiceInputButton
+              isSupported={voice.isSupported}
+              isListening={voice.isListening}
+              error={voice.error}
+              onToggle={voice.toggleListening}
+            />
+
+            {/* Interim voice transcript indicator */}
+            {voice.isListening && voice.interimTranscript && (
+              <div
+                style={{
+                  position: 'absolute',
+                  bottom: -28,
+                  left: 60,
+                  right: 100,
+                  fontSize: 12,
+                  color: 'rgba(255,255,255,0.35)',
+                  fontStyle: 'italic',
+                  fontFamily: 'Inter, system-ui, sans-serif',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  pointerEvents: 'none',
+                }}
+              >
+                {voice.interimTranscript}
+              </div>
+            )}
 
             {/* Send */}
             <button

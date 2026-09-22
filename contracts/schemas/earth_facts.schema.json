@@ -1,0 +1,165 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "EarthFacts",
+  "description": "Structured Earth Facts schema for SatQuery AI remote sensing and agriculture analysis",
+  "type": "object",
+  "properties": {
+    "scene_metadata": {
+      "type": "object",
+      "properties": {
+        "sensor": { "type": "string" },
+        "acquisition_date": { "type": "string" },
+        "spatial_resolution_m": { "type": "number" },
+        "crs": { "type": "string" },
+        "bands_present": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "cloud_cover_percent": { "type": "number" }
+      },
+      "required": ["sensor", "bands_present"]
+    },
+    "spectral_indices": {
+      "type": "object",
+      "properties": {
+        "ndvi": { "$ref": "#/definitions/IndexDistribution" },
+        "ndwi": { "$ref": "#/definitions/IndexDistribution" },
+        "ndbi": { "$ref": "#/definitions/IndexDistribution" },
+        "ndmi": { "$ref": "#/definitions/IndexDistribution" },
+        "nbr": { "$ref": "#/definitions/IndexDistribution" },
+        "dnbr": { "$ref": "#/definitions/IndexDistribution" }
+      }
+    },
+    "vegetation_analysis": {
+      "type": "object",
+      "properties": {
+        "health_score": { "type": "number", "minimum": 0, "maximum": 100 },
+        "health_category": { "type": "string" },
+        "stress_level": { "type": "string", "enum": ["Low", "Moderate", "High", "Severe"] },
+        "vegetated_area_percent": { "type": "number" },
+        "canopy_indicators": {
+          "type": "object",
+          "properties": {
+            "lai_proxy": { "type": "number" },
+            "fapar_proxy": { "type": "number" },
+            "fractional_vegetation_cover": { "type": "number" },
+            "canopy_density_class": { "type": "string" }
+          }
+        },
+        "surface_moisture_proxy": { "type": "number" }
+      }
+    },
+    "water_and_burn": {
+      "type": "object",
+      "properties": {
+        "water_detected": { "type": "boolean" },
+        "water_area_hectares": { "type": "number" },
+        "water_coverage_percent": { "type": "number" },
+        "burn_severity_category": { "type": "string" },
+        "burned_area_hectares": { "type": "number" }
+      }
+    },
+    "agricultural_predictions": {
+      "type": "object",
+      "properties": {
+        "soil_moisture": {
+          "type": "object",
+          "properties": {
+            "estimated_percent": { "type": "number" },
+            "prediction_interval": {
+              "type": "array",
+              "items": { "type": "number" },
+              "minItems": 2,
+              "maxItems": 2
+            },
+            "confidence": { "type": "number" },
+            "qualification": { "type": "string", "default": "Satellite-derived estimate" }
+          }
+        },
+        "soil_type": {
+          "type": "object",
+          "properties": {
+            "primary_class": { "type": "string" },
+            "class_probabilities": { "type": "object" },
+            "confidence": { "type": "number" }
+          }
+        },
+        "crop_classification": {
+          "type": "object",
+          "properties": {
+            "primary_crop": { "type": "string" },
+            "probabilities": { "type": "object" },
+            "confidence": { "type": "number" }
+          }
+        },
+        "crop_suitability": {
+          "type": "object",
+          "properties": {
+            "scores": { "type": "object" },
+            "limiting_factors": { "type": "object" }
+          }
+        },
+        "crop_yield": {
+          "type": "object",
+          "properties": {
+            "central_estimate_t_ha": { "type": "number" },
+            "yield_range_t_ha": {
+              "type": "array",
+              "items": { "type": "number" },
+              "minItems": 2,
+              "maxItems": 2
+            },
+            "confidence": { "type": "number" }
+          }
+        },
+        "irrigation_requirement": {
+          "type": "object",
+          "properties": {
+            "stress_level": { "type": "string" },
+            "estimated_mm_per_week": { "type": "number" },
+            "recommendation": { "type": "string" }
+          }
+        },
+        "drought_risk": {
+          "type": "object",
+          "properties": {
+            "risk_level": { "type": "string", "enum": ["Low", "Moderate", "High", "Severe"] },
+            "anomaly_score": { "type": "number" },
+            "risk_factors": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "agricultural_productivity": {
+          "type": "object",
+          "properties": {
+            "score": { "type": "number" },
+            "class_label": { "type": "string" }
+          }
+        },
+        "soil_nutrient_status": {
+          "type": "object",
+          "properties": {
+            "nitrogen_status": { "type": "string" },
+            "phosphorus_status": { "type": "string" },
+            "potassium_status": { "type": "string" },
+            "confidence": { "type": "number" },
+            "disclaimer": { "type": "string" }
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "IndexDistribution": {
+      "type": "object",
+      "properties": {
+        "mean": { "type": "number" },
+        "median": { "type": "number" },
+        "min": { "type": "number" },
+        "max": { "type": "number" },
+        "p10": { "type": "number" },
+        "p90": { "type": "number" }
+      },
+      "required": ["mean", "median", "min", "max"]
+    }
+  }
+}

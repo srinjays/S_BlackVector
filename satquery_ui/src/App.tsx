@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import HeroSection from './components/HeroSection'
 import WorkspaceView from './components/WorkspaceView'
+import AlertsPanel from './components/AlertsPanel'
+import InvestigationModal from './components/InvestigationModal'
 import './index.css'
 
 /* ─────────────────────────────────────────────────────────
@@ -56,10 +58,13 @@ function loadConversations(): ChatHistoryItem[] {
 
 function saveConversations(items: ChatHistoryItem[]) {
   try {
-    // Strip ephemeral previewUrls before persisting
+    // Keep data: and http: URLs (they survive refresh), strip only ephemeral blob: URLs
     const sanitized = items.slice(0, 50).map(conv => ({
       ...conv,
-      messages: conv.messages?.map(m => ({ ...m, previewUrls: undefined, boundingBoxes: m.boundingBoxes })),
+      messages: conv.messages?.map(m => {
+        const persistable = m.previewUrls?.filter(u => !u.startsWith('blob:'))
+        return { ...m, previewUrls: persistable && persistable.length > 0 ? persistable : undefined }
+      }),
     }))
     localStorage.setItem(LS_KEY, JSON.stringify(sanitized))
   } catch { /* storage full */ }
@@ -246,10 +251,29 @@ export function App() {
   const [chatHistory, setChatHistory] = useState<ChatHistoryItem[]>(() => loadConversations())
   const [activeConversationId, setActiveConversationId] = useState<string | undefined>()
 
+  /* ── PGIL Spatial Intelligence state ── */
+  const [isAlertsOpen, setIsAlertsOpen] = useState(false)
+  const [pendingAlertCount, setPendingAlertCount] = useState(0)
+  const [selectedAlertId, setSelectedAlertId] = useState<string | null>(null)
+  const [selectedChangeEventId, setSelectedChangeEventId] = useState<string | null>(null)
+  const [isInvestigationOpen, setIsInvestigationOpen] = useState(false)
+
+  const handleSelectAlert = (alertId: string, changeEventId?: string) => {
+    setSelectedAlertId(alertId)
+    setSelectedChangeEventId(changeEventId || null)
+    setIsInvestigationOpen(true)
+  }
+
   // Track the last submitted query for retry
   const lastSubmitRef = useRef<{ query: string; files: File[]; task: string | null } | null>(null)
   // Track all blob URLs for cleanup
   const blobUrlsRef = useRef<string[]>([])
+  // Track the last uploaded image IDs so follow-up queries can reuse them
+  const lastImageIdsRef = useRef<string[]>([])
+  // ★ Synchronous refs for conversation isolation — prevents async responses
+  //   from leaking into the wrong conversation when the user switches mid-inference
+  const messagesRef = useRef<WorkspaceMessage[]>([])
+  const activeConvIdRef = useRef<string | undefined>()
 
   /* ── Health check — poll every 30s ── */
   useEffect(() => {
@@ -262,6 +286,10 @@ export function App() {
 
   /* ── Persist conversations (without blob URLs) ── */
   useEffect(() => { saveConversations(chatHistory) }, [chatHistory])
+
+  /* ── Keep synchronous refs in sync with React state ── */
+  useEffect(() => { messagesRef.current = messages }, [messages])
+  useEffect(() => { activeConvIdRef.current = activeConversationId }, [activeConversationId])
 
   /* ── Revoke blob URLs when clearing messages ── */
   const revokeBlobUrls = useCallback(() => {
@@ -296,9 +324,21 @@ export function App() {
     files: File[],
     task: 'vqa' | 'caption' | 'change' | 'fusion' | 'grounding',
     previewUrls: string[],
+    existingImageIds?: string[],
   ): Promise<WorkspaceMessage> => {
     // Step 1: Upload real files → get absolute paths as image_ids
-    const imageIds = await uploadFiles(files)
+    // If no new files but we have previously uploaded IDs, reuse them
+    let imageIds: string[]
+    if (files.length > 0) {
+      imageIds = await uploadFiles(files)
+    } else if (existingImageIds && existingImageIds.length > 0) {
+      imageIds = existingImageIds
+    } else {
+      imageIds = await uploadFiles(files) // falls back to demo ID
+    }
+
+    // Store for follow-up queries
+    lastImageIdsRef.current = imageIds
 
     const augmentedQuery = augmentQuery(query, task)
 
@@ -333,7 +373,12 @@ export function App() {
       ? data.confidence
       : (typeof data.confidence === 'object' ? data.confidence?.score : 0)
 
-    const convertedUrl = facts.converted_image_b64 || (previewUrls.length > 0 ? previewUrls[0] : undefined)
+    // Priority chain: annotated > change_map > converted > user preview
+    const resultImageUrl =
+      facts.annotated_image_b64 ||
+      facts.change_map_b64 ||
+      facts.converted_image_b64 ||
+      (previewUrls.length > 0 ? previewUrls[0] : undefined)
 
     // ── Grounding: extract bboxes, build human-readable text
     if (task === 'grounding') {
@@ -349,7 +394,7 @@ export function App() {
         confidence: confidenceScore,
         boundingBoxes: bboxes,
         masksB64,
-        previewUrls: convertedUrl ? [convertedUrl] : undefined,
+        previewUrls: resultImageUrl ? [resultImageUrl] : undefined,
       }
     }
 
@@ -371,7 +416,7 @@ export function App() {
       confidence: confidenceScore,
       opticalPct: facts.optical_contribution,
       sarPct: facts.sar_contribution,
-      previewUrls: convertedUrl ? [convertedUrl] : undefined,
+      previewUrls: resultImageUrl ? [resultImageUrl] : undefined,
     }
   }, [uploadFiles])
 
@@ -382,30 +427,8 @@ export function App() {
     selectedTask: string | null,
     existingConvId?: string,
   ) => {
+    // Detect task locally FIRST (instant, no network)
     let task: 'vqa' | 'caption' | 'change' | 'fusion' | 'grounding' = detectTaskType(query, files, selectedTask)
-
-    // Dynamic LLM Intent Classification: If selectedTask is auto, ask LLM router
-    if (!selectedTask && query.trim()) {
-      try {
-        const routeRes = await fetch('http://localhost:8200/route', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            query: query.trim(),
-            input_scope: files.length >= 2 ? 'bi_temporal' : 'single',
-            image_ids: files.map(f => f.name),
-          })
-        })
-        if (routeRes.ok) {
-          const decision = await routeRes.json()
-          if (decision.task_type && ['vqa', 'caption', 'change', 'fusion', 'grounding'].includes(decision.task_type)) {
-            task = decision.task_type as any
-          }
-        }
-      } catch (err) {
-        console.warn('LLM router endpoint fetch failed, using local detection fallback:', err)
-      }
-    }
 
     // Pre-flight: change detection needs 2 images
     if (task === 'change' && files.length > 0 && files.length < 2) {
@@ -443,30 +466,62 @@ export function App() {
       }
       setChatHistory(prev => [newEntry, ...prev])
       setActiveConversationId(convId)
+      activeConvIdRef.current = convId  // sync immediately, don't wait for useEffect
     }
 
-    setMessages(prev => [...prev, userMsg])
+    // ★ Capture a SNAPSHOT of this conversation's messages at submit time.
+    //   This snapshot is used later so the async response always goes to the
+    //   correct conversation, even if the user switches away mid-inference.
+    const convMessages = [...messagesRef.current, userMsg]
+
+    // ★ INSTANT transition — move to workspace and show thinking animation
+    setMessages(convMessages)
+    messagesRef.current = convMessages
     setView('workspace')
     setIsLoading(true)
 
+    // Task routing: detectTaskType() provides instant, reliable routing via regex.
+    // The /route LLM endpoint is NOT called here — it monopolises the GPU for ~15s
+    // and always falls back to VQA anyway (the EOV2B model returns prose, not JSON).
+    // LLM-based routing lives server-side in /analyze for non-streaming tasks.
+
+    // Reuse previously uploaded image IDs for follow-up queries in the same conversation
+    const inheritedImageIds = files.length === 0 ? lastImageIdsRef.current : undefined
+
     try {
-      const aiMsg = await runInference(query, files, task as any, allPreviewUrls)
-      setMessages(prev => {
-        const updated = [...prev, aiMsg]
-        setChatHistory(hist =>
-          hist.map(h => h.id === convId ? { ...h, messages: updated } : h)
-        )
-        return updated
-      })
+      const aiMsg = await runInference(query, files, task as any, allPreviewUrls, inheritedImageIds)
+
+      // ★ Build final messages from the SNAPSHOT (not from current state)
+      const finalMessages = [...convMessages, aiMsg]
+
+      // ★ Always update chatHistory for the correct conversation
+      setChatHistory(hist =>
+        hist.map(h => h.id === convId ? { ...h, messages: finalMessages } : h)
+      )
+
+      // ★ Only update displayed messages if user is still viewing THIS conversation
+      if (activeConvIdRef.current === convId) {
+        setMessages(finalMessages)
+        messagesRef.current = finalMessages
+      }
     } catch (err: any) {
       const errMsg: WorkspaceMessage = {
         id: uid(), role: 'assistant',
         content: err.message ?? String(err),
         taskType: 'error',
       }
-      setMessages(prev => [...prev, errMsg])
+      const finalMessages = [...convMessages, errMsg]
+
+      // Only update display if still on this conversation
+      if (activeConvIdRef.current === convId) {
+        setMessages(finalMessages)
+        messagesRef.current = finalMessages
+      }
     } finally {
-      setIsLoading(false)
+      // Only clear loading if still on this conversation
+      if (activeConvIdRef.current === convId) {
+        setIsLoading(false)
+      }
     }
   }, [runInference])
 
@@ -492,7 +547,9 @@ export function App() {
   const handleNewAnalysis = useCallback(() => {
     revokeBlobUrls()
     setMessages([])
+    messagesRef.current = []
     setActiveConversationId(undefined)
+    activeConvIdRef.current = undefined
     lastSubmitRef.current = null
     setView('hero')
   }, [revokeBlobUrls])
@@ -501,8 +558,12 @@ export function App() {
   const handleSelectConversation = useCallback((id: string) => {
     const conv = chatHistory.find(h => h.id === id)
     if (!conv) return
-    setMessages(conv.messages ?? [])
+    const restored = conv.messages ?? []
+    setMessages(restored)
+    messagesRef.current = restored
     setActiveConversationId(id)
+    activeConvIdRef.current = id
+    setIsLoading(false)   // cancel any loading spinner from previous conversation
     setView('workspace')
   }, [chatHistory])
 
@@ -521,26 +582,62 @@ export function App() {
         />
       </video>
 
-      {/* ── Backend / GPU status pill ── */}
+      {/* ── PGIL Intelligence Alerts & GPU Status pill header bar ── */}
       <div style={{
         position: 'fixed', top: 12, right: 16, zIndex: 9999,
-        display: 'flex', alignItems: 'center', gap: 6,
-        padding: '4px 10px', borderRadius: 9999,
-        background: 'rgba(12,12,12,0.80)',
-        border: '1px solid rgba(255,255,255,0.08)',
-        backdropFilter: 'blur(12px)',
-        WebkitBackdropFilter: 'blur(12px)',
+        display: 'flex', alignItems: 'center', gap: 10,
       }}>
-        <span style={{
-          width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
-          background: backendOnline === true ? '#86efac' : backendOnline === false ? '#f87171' : '#fb923c',
-        }} />
-        <span style={{
-          color: 'rgba(255,255,255,0.40)', fontSize: 11,
-          fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 500, letterSpacing: '0.02em',
+        {/* Spatial Intelligence Bell Button */}
+        <button
+          onClick={() => setIsAlertsOpen(true)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: '5px 12px', borderRadius: 9999,
+            background: 'rgba(12,12,12,0.85)',
+            border: '1px solid rgba(16,185,129,0.3)',
+            backdropFilter: 'blur(12px)',
+            WebkitBackdropFilter: 'blur(12px)',
+            color: '#e2e8f0', cursor: 'pointer', fontSize: 11,
+            fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 600,
+            transition: 'all 0.2s ease',
+          }}
+          title="PGIL Spatial Intelligence Alerts"
+        >
+          <svg style={{ width: 14, height: 14, color: '#10b981' }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+          </svg>
+          <span>PGIL Alerts</span>
+          {pendingAlertCount > 0 && (
+            <span style={{
+              background: '#ef4444', color: '#ffffff',
+              fontSize: 10, fontWeight: 700, padding: '1px 6px',
+              borderRadius: 9999, lineHeight: 1,
+            }}>
+              {pendingAlertCount}
+            </span>
+          )}
+        </button>
+
+        {/* Backend / GPU status pill */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 6,
+          padding: '5px 12px', borderRadius: 9999,
+          background: 'rgba(12,12,12,0.80)',
+          border: '1px solid rgba(255,255,255,0.08)',
+          backdropFilter: 'blur(12px)',
+          WebkitBackdropFilter: 'blur(12px)',
         }}>
-          GPU {backendOnline === true ? 'Online' : backendOnline === false ? 'Offline' : 'Checking…'}
-        </span>
+          <span style={{
+            width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
+            background: backendOnline === true ? '#86efac' : backendOnline === false ? '#f87171' : '#fb923c',
+          }} />
+          <span style={{
+            color: 'rgba(255,255,255,0.40)', fontSize: 11,
+            fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 500, letterSpacing: '0.02em',
+          }}>
+            GPU {backendOnline === true ? 'Online' : backendOnline === false ? 'Offline' : 'Checking…'}
+          </span>
+        </div>
       </div>
 
       {/* ── View layer ── */}
@@ -580,6 +677,21 @@ export function App() {
           )}
         </AnimatePresence>
       </div>
+
+      {/* ── PGIL Spatial Intelligence Slide-Out & Investigation Modal ── */}
+      <AlertsPanel
+        isOpen={isAlertsOpen}
+        onClose={() => setIsAlertsOpen(false)}
+        onSelectAlert={handleSelectAlert}
+        onUpdateCount={setPendingAlertCount}
+      />
+
+      <InvestigationModal
+        isOpen={isInvestigationOpen}
+        onClose={() => setIsInvestigationOpen(false)}
+        alertId={selectedAlertId}
+        changeEventId={selectedChangeEventId}
+      />
     </>
   )
 }

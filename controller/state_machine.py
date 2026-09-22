@@ -8,6 +8,7 @@ from .models import (
     ConfidenceRequest,
     ControllerResponse,
     ExecutionTrace,
+    IntelligenceAlert,
     MLRequest,
     MLEvidence,
     QueryRequest,
@@ -16,6 +17,10 @@ from .models import (
     ValidationRequest,
 )
 from .registry import get_registry
+
+import logging
+
+pgil_logger = logging.getLogger("pgil.intelligence_path")
 
 
 class ControllerEngine:
@@ -150,6 +155,18 @@ class ControllerEngine:
             }
             event("TRACE_FINALIZED", "success", "Execution trace completed")
 
+            # ── PGIL Intelligence Path (runs AFTER query answer) ─────
+            intelligence_alerts: List[Dict[str, Any]] = []
+            try:
+                intelligence_alerts = await self._run_intelligence_path(
+                    request=request,
+                    validation_normalized=validation.normalized_input,
+                    event_fn=event,
+                )
+            except Exception as pgil_exc:
+                pgil_logger.warning("PGIL intelligence path failed (non-fatal): %s", pgil_exc)
+                event("INTELLIGENCE_PATH", "failed", f"PGIL error (non-fatal): {pgil_exc}")
+
             trace = ExecutionTrace(request_id=request_id, task=task, final_status="success", events=events)
             return ControllerResponse(
                 request_id=request_id,
@@ -162,6 +179,7 @@ class ControllerEngine:
                 disagreement=bool(confidence.disagreement or ml_result.disagreement),
                 provenance=provenance,
                 trace=trace,
+                intelligence_alerts=[IntelligenceAlert(**a) for a in intelligence_alerts],
             )
 
         except Exception as exc:
@@ -179,3 +197,24 @@ class ControllerEngine:
                 trace=trace,
                 error=str(exc),
             )
+
+    async def _run_intelligence_path(
+        self,
+        request: QueryRequest,
+        validation_normalized: Dict[str, Any],
+        event_fn: Any,
+    ) -> List[Dict[str, Any]]:
+        """
+        PGIL Intelligence Path — now handled automatically by the ML server
+        on every image upload (via _pgil_ingest_background in server.py).
+
+        The controller no longer runs its own PGIL path because:
+        1. The frontend calls the ML service directly (bypasses controller)
+        2. The controller has no GPU access for ChangeFormer / object extraction
+        3. The ML server's auto-ingest runs real analysis with full model access
+
+        This method remains as a no-op stub to avoid breaking the call site.
+        """
+        event_fn("INTELLIGENCE_PATH", "success",
+                 "PGIL: Intelligence runs automatically on ML server via upload ingestion")
+        return []

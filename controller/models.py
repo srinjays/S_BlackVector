@@ -14,6 +14,10 @@ class TaskType(str, Enum):
     GROUNDING = "grounding"
     CHANGE = "change"
     FUSION = "fusion"
+    EARTH_FACTS = "earth_facts"
+    SPECTRAL_ANALYSIS = "spectral"
+    AGRICULTURE_PREDICTION = "agriculture"
+
 
 
 class InputScope(str, Enum):
@@ -126,6 +130,20 @@ class ExecutionTrace(BaseModel):
     events: List[TraceEvent] = Field(default_factory=list)
 
 
+class IntelligenceAlert(BaseModel):
+    """PGIL alert surfaced alongside query responses."""
+    alert_id: str
+    area_id: str
+    alert_type: str = ""
+    title: str = ""
+    description: str = ""
+    severity: str = "medium"
+    confidence: float = 0.0
+    observation_interval: Optional[str] = None
+    affected_count: int = 0
+    change_event_id: Optional[str] = None
+
+
 class ControllerResponse(BaseModel):
     request_id: UUID
     task: TaskType
@@ -138,3 +156,4 @@ class ControllerResponse(BaseModel):
     provenance: Dict[str, Any] = Field(default_factory=dict)
     trace: ExecutionTrace
     error: Optional[str] = None
+    intelligence_alerts: List[IntelligenceAlert] = Field(default_factory=list)

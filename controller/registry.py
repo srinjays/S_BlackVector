@@ -42,7 +42,29 @@ TOOL_REGISTRY: Dict[TaskType, ToolSpec] = {
         required_scope=[InputScope.CROSS_MODAL],
         description="Optical-SAR complementary information fusion",
     ),
+    TaskType.EARTH_FACTS: ToolSpec(
+        name="earth_facts",
+        task_type=TaskType.EARTH_FACTS,
+        endpoint="/earth_facts",
+        required_scope=[InputScope.SINGLE],
+        description="Verifiable Earth Observation domain facts",
+    ),
+    TaskType.SPECTRAL_ANALYSIS: ToolSpec(
+        name="spectral",
+        task_type=TaskType.SPECTRAL_ANALYSIS,
+        endpoint="/spectral",
+        required_scope=[InputScope.SINGLE, InputScope.BI_TEMPORAL, InputScope.CROSS_MODAL],
+        description="Multi-spectral indices and remote sensing indicator engine",
+    ),
+    TaskType.AGRICULTURE_PREDICTION: ToolSpec(
+        name="agriculture",
+        task_type=TaskType.AGRICULTURE_PREDICTION,
+        endpoint="/agriculture",
+        required_scope=[InputScope.SINGLE, InputScope.BI_TEMPORAL, InputScope.CROSS_MODAL],
+        description="Context-aware probabilistic agricultural prediction engine",
+    ),
 }
+
 
 
 def get_registry() -> Dict[TaskType, ToolSpec]:

@@ -1,0 +1,67 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AgricultureRequest",
+  "description": "Request schema for SatQuery AI agriculture prediction endpoint",
+  "type": "object",
+  "properties": {
+    "request_id": { "type": "string", "format": "uuid" },
+    "query": { "type": "string" },
+    "image_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "predictions_requested": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "soil_moisture",
+          "soil_type",
+          "soil_nutrients",
+          "crop_classification",
+          "crop_suitability",
+          "crop_recommendation",
+          "crop_yield",
+          "irrigation_requirement",
+          "drought_risk",
+          "agricultural_productivity",
+          "all"
+        ]
+      },
+      "default": ["all"]
+    },
+    "context": {
+      "type": "object",
+      "description": "Optional external/contextual data for improved predictions",
+      "properties": {
+        "weather": {
+          "type": "object",
+          "properties": {
+            "rainfall_mm": { "type": "number" },
+            "temperature_mean_c": { "type": "number" },
+            "temperature_min_c": { "type": "number" },
+            "temperature_max_c": { "type": "number" },
+            "humidity_percent": { "type": "number" },
+            "wind_speed_kmh": { "type": "number" }
+          }
+        },
+        "soil_samples": {
+          "type": "object",
+          "properties": {
+            "ph": { "type": "number" },
+            "nitrogen_kg_ha": { "type": "number" },
+            "phosphorus_kg_ha": { "type": "number" },
+            "potassium_kg_ha": { "type": "number" },
+            "organic_carbon_percent": { "type": "number" }
+          }
+        },
+        "crop_type": { "type": "string" },
+        "historical_yield_t_ha": { "type": "number" },
+        "growing_season_days": { "type": "integer" }
+      }
+    },
+    "metadata": { "type": "object" }
+  },
+  "required": ["image_ids"]
+}

@@ -1,0 +1,43 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SpectralRequest",
+  "description": "Request schema for SatQuery AI spectral analysis endpoint",
+  "type": "object",
+  "properties": {
+    "request_id": { "type": "string", "format": "uuid" },
+    "query": { "type": "string" },
+    "image_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "maxItems": 2,
+      "description": "One image for single-scene, two for burn severity dNBR"
+    },
+    "indices_requested": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["ndvi", "ndwi", "mndwi", "ndbi", "ndmi", "nbr", "dnbr", "all"]
+      },
+      "default": ["all"]
+    },
+    "analysis_requested": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "vegetation_health",
+          "vegetation_stress",
+          "water_extent",
+          "burn_severity",
+          "canopy_indicators",
+          "surface_moisture_proxy",
+          "all"
+        ]
+      },
+      "default": ["all"]
+    },
+    "metadata": { "type": "object" }
+  },
+  "required": ["image_ids"]
+}

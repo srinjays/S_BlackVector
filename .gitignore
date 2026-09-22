@@ -1,4 +1,4 @@
-# Python & Bytecode
+# ─── Python & Bytecode ───────────────────────────────
 __pycache__/
 *.py[cod]
 *$py.class
@@ -20,7 +20,7 @@ wheels/
 .installed.cfg
 *.egg
 
-# Virtual Environments
+# ─── Virtual Environments ────────────────────────────
 satquery_env/
 venv/
 ENV/
@@ -28,13 +28,13 @@ ENV/
 .venv312/
 .venv_local/
 
-# UI Node modules & build outputs
+# ─── UI Node modules & build outputs ─────────────────
 satquery_ui/node_modules/
 satquery_ui/dist/
 satquery_ui/.vite/
 node_modules/
 
-# Model weights & Checkpoints (large binary files)
+# ─── Model weights & Checkpoints (large binary) ──────
 models/
 checkpoints/
 *.pt
@@ -44,16 +44,25 @@ checkpoints/
 *.onnx
 yolov8x-obb.pt
 
-# Bulk datasets, raw imagery, and temporary data patches
+# ─── Bulk datasets, raw imagery, runtime data ────────
 data/bigearthnet_txt/
 data/imagery_cache/
 data/temporal_pairs/
+data/converted_rgb/
+data/archives/
 data/training/
 data/training_exp1/
 data/training_exp2/
 data/training_exp3/
 data/training_sar/
+data/uploads/
 data/sampled_patches.json
+data/pgil_memory.db
+data/pgil_memory.db-shm
+data/pgil_memory.db-wal
+data/debug_model_input.png
+data/test_conversion.png
+data/pdf_extracted.txt
 patch_*
 S2A_MSIL2A_*
 *.npz
@@ -64,22 +73,50 @@ S2A_MSIL2A_*
 *.gz
 *.tif
 *.tiff
+
+# ─── Generated outputs & eval results ────────────────
 outputs/
 eval_results_v2/
 evaluation/
 scratch/
-scratch_aichatprompt_raw.tsx
+docs/
 
-# Miscellaneous temp image & markdown files
-ChatGPT Image*
+# ─── Internal planning & agent workspace ─────────────
+GEMINI.md
+PRIMARY\ GOAL.md
+implementation_plan.md
+README1.md
+SatQuery_AI_*.md
+Pasted\ markdown*.md
+SatQuery_Data_Engineering_Instructions.md
+SatQuery_Remote_Sensing_Intelligence_Plan.md
+
+# ─── Generated reports & temp images ─────────────────
+*.pdf
+ChatGPT\ Image*
 debug_what_model_sees.png
-Pasted markdown*
 
-# Keep data scripts tracked (they ARE code)
+# ─── One-off scripts (not part of core) ──────────────
+audit_*.py
+verify_*.py
+verify_fixes.py
+check_*.py
+debug_*.py
+create_dataset_now.py
+generate_json.py
+generate_subset.py
+test_base_vs_lora.py
+test_ml_direct.py
+scratch_aichatprompt_raw.tsx
+phase0_results.json
+
+# ─── Secrets ─────────────────────────────────────────
+.env
+
+# ─── Keep data scripts tracked (they ARE code) ───────
 !data/scripts/
-!contracts/
 
-# Testing & IDE
+# ─── Testing & IDE ───────────────────────────────────
 .pytest_cache/
 .coverage
 htmlcov/
@@ -87,6 +124,6 @@ htmlcov/
 .idea/
 *.log
 
-# System & OS
+# ─── System & OS ─────────────────────────────────────
 Thumbs.db
 .DS_Store

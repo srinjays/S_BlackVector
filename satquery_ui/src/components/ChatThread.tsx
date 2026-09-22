@@ -2,6 +2,7 @@ import React, { useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Download, AlertCircle, ChevronDown, CheckCircle2, Loader2, RefreshCw } from 'lucide-react'
 import { useState } from 'react'
+import { exportMessageToPdf } from '@/lib/pdf-export'
 
 /* ─────────────────────────────────────────────────────────
    Types
@@ -855,6 +856,25 @@ export const ChatThread: React.FC<ChatThreadProps> = ({ messages, isLoading, onR
                         <button
                           className="flex items-center gap-2 mt-4 text-[12px] font-medium transition-opacity hover:opacity-80"
                           style={{ color: 'rgba(255,255,255,0.30)', cursor: 'pointer', background: 'none', border: 'none', padding: 0 }}
+                          onClick={() => {
+                            // Find the user message that precedes this assistant message
+                            const msgIdx = messages.indexOf(msg)
+                            const userMsg = messages.slice(0, msgIdx).reverse().find(m => m.role === 'user')
+                            exportMessageToPdf({
+                              query: userMsg?.content ?? '',
+                              answer: msg.content,
+                              taskType: msg.taskType ?? 'vqa',
+                              modelUsed: msg.modelUsed,
+                              confidence: msg.confidence,
+                              inputType: msg.inputType,
+                              previewUrls: userMsg?.previewUrls,
+                              resultImageUrl: msg.previewUrls?.[0],
+                              boundingBoxes: msg.boundingBoxes,
+                              opticalPct: msg.opticalPct,
+                              sarPct: msg.sarPct,
+                              timestamp: Date.now(),
+                            })
+                          }}
                         >
                           <Download className="w-3.5 h-3.5" />
                           Export report

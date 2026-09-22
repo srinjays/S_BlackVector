@@ -58,10 +58,8 @@ export function Navbar({ githubUrl = 'https://github.com' }: NavbarProps) {
   }, [isOpen]);
 
   const navLinks = [
-    { label: 'Home',         href: '#' },
-    { label: 'Features',     href: '#features' },
-    { label: 'How It Works', href: '#how-it-works' },
-    { label: 'Why Us',       href: '#why-us' },
+    { label: 'SIH PS',  href: '#sih-ps' },
+    { label: 'PPT',     href: '#ppt' },
   ];
 
   /* ── Logo ── */
