@@ -12,7 +12,7 @@
 
 ## What is This?
 
-Netra 1.0 is an end-to-end satellite imagery intelligence platform that combines **on-device vision-language models** with **cloud LLM synthesis** to answer natural language questions about Earth observation data. It supports multi-spectral GeoTIFFs, optical imagery, and SAR data through a unified conversational interface.
+Satquery AI powered by Netra 1.0 is an end to end satellite imagery intelligence platform that combines **on device vision language models** with **cloud LLM synthesis** to answer natural language questions about Earth observation data. It supports multi spectral GeoTIFFs, optical imagery, and SAR data through a unified conversational interface.
 
 ### Key Features
 
