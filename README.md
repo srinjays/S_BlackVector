@@ -30,7 +30,7 @@ Netra 1.0 is an end-to-end satellite imagery intelligence platform that combines
 | Metric | Value |
 |--------|-------|
 | **VRAM Footprint** | ~1,680 MB (all models resident) |
-| **VQA Latency** | 5-15s (EOV2B) / 20-30s (hybrid with Gemini) |
+| **VQA Latency** | 0.4-5s (EOV2B) / 1-7s (hybrid with Gemini) |
 | **Change Detection** | 0.5-2s (ChangeFormer, 1024×1024 input) |
 | **Object Grounding** | 1-3s (GroundingDINO-Tiny + MobileSAM) |
 | **Supported Formats** | GeoTIFF, PNG, JPEG, Sentinel-2, PALSAR |
