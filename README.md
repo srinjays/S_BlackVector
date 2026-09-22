@@ -1,4 +1,4 @@
-# Netra 1.0
+# Satquery AI powered by Netra 1.0
 
 **Production-ready satellite imagery analysis platform powered by a hybrid AI architecture**
 
